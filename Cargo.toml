@@ -45,6 +45,7 @@ dynamic = ["bevy_dylib"]
 # Rendering support
 render = [
   "bevy_internal/bevy_core_pipeline",
+  "bevy_internal/bevy_drawing",
   "bevy_internal/bevy_pbr",
   "bevy_internal/bevy_gltf",
   "bevy_internal/bevy_render",
@@ -58,6 +59,7 @@ bevy_animation = ["bevy_internal/bevy_animation"]
 bevy_asset = ["bevy_internal/bevy_asset"]
 bevy_audio = ["bevy_internal/bevy_audio"]
 bevy_core_pipeline = ["bevy_internal/bevy_core_pipeline"]
+bevy_drawing = ["bevy_internal/bevy_drawing"]
 bevy_dynamic_plugin = ["bevy_internal/bevy_dynamic_plugin"]
 bevy_gilrs = ["bevy_internal/bevy_gilrs"]
 bevy_gltf = ["bevy_internal/bevy_gltf"]
@@ -282,6 +284,10 @@ name = "3D Shapes"
 description = "A scene showcasing the built-in 3D shapes"
 category = "3D Rendering"
 wasm = true
+
+[[example]]
+name = "drawing"
+path = "examples/3d/drawing.rs"
 
 [[example]]
 name = "lighting"
