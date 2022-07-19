@@ -21,6 +21,10 @@ pub use crate::animation::prelude::*;
 pub use crate::core_pipeline::prelude::*;
 
 #[doc(hidden)]
+#[cfg(feature = "bevy_drawing")]
+pub use crate::drawing::prelude::*;
+
+#[doc(hidden)]
 #[cfg(feature = "bevy_pbr")]
 pub use crate::pbr::prelude::*;
 

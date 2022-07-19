@@ -56,9 +56,13 @@ impl PluginGroup for DefaultPlugins {
 
         #[cfg(feature = "bevy_ui")]
         group.add(bevy_ui::UiPlugin::default());
-
+        
         #[cfg(feature = "bevy_pbr")]
         group.add(bevy_pbr::PbrPlugin::default());
+
+        #[cfg(feature = "bevy_drawing")]
+        group.add(bevy_drawing::DrawingPlugin::default());
+
 
         // NOTE: Load this after renderer initialization so that it knows about the supported
         // compressed texture formats
