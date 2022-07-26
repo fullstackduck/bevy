@@ -1,4 +1,5 @@
 mod disk;
+mod line;
 mod quad;
 mod regular_polygon;
 
@@ -16,7 +17,7 @@ pub(crate) use quad::QuadPlugin;
 
 use crate::system;
 
-use self::regular_polygon::RegularPolygonPlugin;
+use self::{regular_polygon::RegularPolygonPlugin, line::LinePlugin};
 
 fn add_drawable<D: Drawable>(app: &mut App) {
     app.add_system_to_stage(CoreStage::Last, system::spawn::<D>);
@@ -28,8 +29,9 @@ pub struct DefaultPlugins;
 impl PluginGroup for DefaultPlugins {
     fn build(&mut self, group: &mut PluginGroupBuilder) {
         group.add(DiskPlugin);
-        group.add(QuadPlugin);
+        group.add(LinePlugin);
         group.add(RegularPolygonPlugin);
+        group.add(QuadPlugin);
     }
 }
 
