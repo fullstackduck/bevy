@@ -39,7 +39,7 @@ impl Drawable for figure::RegularPolygon {
     type DrawingMaterial = RegularPolygonMaterial;
 
     fn draw(&self, commands: &mut Commands) -> &Self {
-        commands.spawn().insert(Draw::from_figure(self.clone()));
+        commands.spawn(Draw::from_figure(self.clone()));
         self
     }
 
