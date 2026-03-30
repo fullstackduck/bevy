@@ -123,11 +123,13 @@ impl Plugin for ViewPlugin {
                         .in_set(RenderSystems::PrepareViews)
                         .before(prepare_view_targets)
                         .after(prepare_windows),
-                    prepare_view_targets
+                    (prepare_view_targets, prepare_multiple_render_targets)
                         .in_set(RenderSystems::PrepareViews)
                         .after(prepare_windows)
                         .after(crate::render_asset::prepare_assets::<GpuImage>)
                         .ambiguous_with(crate::camera::sort_cameras), // doesn't use `sorted_camera_index_for_target`
+                    // .in_set(RenderSystems::PrepareViews)
+                    //     .after(prepare_view_targets)
                     prepare_view_uniforms.in_set(RenderSystems::PrepareResources),
                     collect_visible_cpu_culled_entities.in_set(RenderSystems::PrepareAssets),
                 ),
@@ -605,6 +607,9 @@ pub struct ViewUniformOffset {
 }
 
 #[derive(Component, Clone)]
+pub struct ViewMultipleTarget(pub Vec<ColorAttachment>);
+
+#[derive(Component, Clone)]
 pub struct ViewTarget {
     main_textures: MainTargetTextures,
     main_texture_format: TextureFormat,
@@ -1007,24 +1012,33 @@ pub fn prepare_view_attachments(
     mut view_target_attachments: ResMut<ViewTargetAttachments>,
 ) {
     for camera in cameras.iter() {
-        let Some(target) = &camera.target else {
-            continue;
-        };
+        let targets = camera.target.iter().chain(
+            camera
+                .multiple_render_targets
+                .iter()
+                .flat_map(|f| f.0.iter()),
+        );
 
-        match view_target_attachments.entry(target.clone()) {
-            Entry::Occupied(_) => {}
-            Entry::Vacant(entry) => {
-                let Some(attachment) = target
-                    .get_texture_view(&windows, &images, &manual_texture_views)
-                    .cloned()
-                    .zip(target.get_texture_view_format(&windows, &images, &manual_texture_views))
-                    .map(|(view, format)| OutputColorAttachment::new(view.clone(), format))
-                else {
-                    continue;
-                };
-                entry.insert(attachment);
-            }
-        };
+        for target in targets {
+            match view_target_attachments.entry(target.clone()) {
+                Entry::Occupied(_) => {}
+                Entry::Vacant(entry) => {
+                    let Some(attachment) = target
+                        .get_texture_view(&windows, &images, &manual_texture_views)
+                        .cloned()
+                        .zip(target.get_texture_view_format(
+                            &windows,
+                            &images,
+                            &manual_texture_views,
+                        ))
+                        .map(|(view, format)| OutputColorAttachment::new(view.clone(), format))
+                    else {
+                        continue;
+                    };
+                    entry.insert(attachment);
+                }
+            };
+        }
     }
 }
 
@@ -1158,5 +1172,117 @@ pub fn prepare_view_targets(
             main_texture_format,
             out_texture: out_attachment.clone(),
         });
+    }
+}
+
+pub fn prepare_multiple_render_targets(
+    mut commands: Commands,
+    clear_color_global: Res<ClearColor>,
+    render_device: Res<RenderDevice>,
+    mut texture_cache: ResMut<TextureCache>,
+    cameras: Query<(
+        Entity,
+        &ExtractedCamera,
+        &ExtractedView,
+        &CameraMainTextureUsages,
+        &Msaa,
+    )>,
+    view_target_attachments: Res<ViewTargetAttachments>,
+) {
+    let mut textures = <HashMap<_, _>>::default();
+    for (entity, camera, view, texture_usage, msaa) in cameras.iter() {
+        // let Some(multiple_render_targets) = camera.multiple_render_targets else {
+        //     continue;
+        // };
+        if camera.multiple_render_targets.is_none() {
+            continue;
+        }
+
+        let main_texture_format = if view.hdr {
+            ViewTarget::TEXTURE_FORMAT_HDR
+        } else {
+            TextureFormat::bevy_default()
+        };
+
+        let clear_color = match camera.clear_color {
+            ClearColorConfig::Custom(color) => Some(color),
+            ClearColorConfig::None => None,
+            _ => Some(clear_color_global.0),
+        };
+        let converted_clear_color = clear_color.map(Into::into);
+        let mut color_attachments = vec![];
+
+        for target in camera.multiple_render_targets.as_ref().unwrap().0.iter() {
+            let (Some(target_size), Some(out_attachment)) = (
+                camera.physical_target_size,
+                view_target_attachments.get(target),
+            ) else {
+                // If we can't find an output attachment we need to remove the ViewTarget
+                // component to make sure the camera doesn't try rendering to an invalid
+                // output attachment.
+                // commands.entity(entity).try_remove::<ViewTarget>();
+
+                continue;
+            };
+
+            let (texture, sampled) = textures
+                .entry((camera.target.clone(), texture_usage.0, view.hdr, msaa))
+                .or_insert_with(|| {
+                    let descriptor = TextureDescriptor {
+                        label: None,
+                        size: target_size.to_extents(),
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: TextureDimension::D2,
+                        format: main_texture_format,
+                        usage: texture_usage.0,
+                        view_formats: match main_texture_format {
+                            TextureFormat::Bgra8Unorm => &[TextureFormat::Bgra8UnormSrgb],
+                            TextureFormat::Rgba8Unorm => &[TextureFormat::Rgba8UnormSrgb],
+                            _ => &[],
+                        },
+                    };
+                    let texture = texture_cache.get(
+                        &render_device,
+                        TextureDescriptor {
+                            label: Some("multiple_render_target_texture"),
+                            ..descriptor
+                        },
+                    );
+
+                    let sampled = if msaa.samples() > 1 {
+                        let sampled = texture_cache.get(
+                            &render_device,
+                            TextureDescriptor {
+                                label: Some("multiple_render_target_texture_sampled"),
+                                size: target_size.to_extents(),
+                                mip_level_count: 1,
+                                sample_count: msaa.samples(),
+                                dimension: TextureDimension::D2,
+                                format: main_texture_format,
+                                usage: TextureUsages::RENDER_ATTACHMENT,
+                                view_formats: descriptor.view_formats,
+                            },
+                        );
+                        Some(sampled)
+                    } else {
+                        None
+                    };
+
+                    (texture, sampled)
+                });
+
+            let color_attachment = ColorAttachment::new(
+                texture.clone(),
+                sampled.clone(),
+                None,
+                converted_clear_color,
+            );
+            color_attachments.push(color_attachment);
+        }
+
+        commands
+            .entity(entity)
+            .insert(ViewMultipleTarget(color_attachments));
     }
 }

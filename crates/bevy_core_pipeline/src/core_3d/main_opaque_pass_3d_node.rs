@@ -11,9 +11,9 @@ use bevy_render::{
     camera::ExtractedCamera,
     diagnostic::RecordDiagnostics,
     render_phase::ViewBinnedRenderPhases,
-    render_resource::{PipelineCache, RenderPassDescriptor, StoreOp},
+    render_resource::{PipelineCache, RenderPassColorAttachment, RenderPassDescriptor, StoreOp},
     renderer::{RenderContext, ViewQuery},
-    view::{ExtractedView, ViewDepthTexture, ViewTarget, ViewUniformOffset},
+    view::{ExtractedView, ViewDepthTexture, ViewMultipleTarget, ViewTarget, ViewUniformOffset},
 };
 
 use super::AlphaMask3d;
@@ -24,6 +24,7 @@ pub fn main_opaque_pass_3d(
         &ExtractedCamera,
         &ExtractedView,
         &ViewTarget,
+        Option<&ViewMultipleTarget>,
         &ViewDepthTexture,
         Option<&SkyboxPipelineId>,
         Option<&SkyboxBindGroup>,
@@ -41,6 +42,7 @@ pub fn main_opaque_pass_3d(
         camera,
         extracted_view,
         target,
+        multiple_targets,
         depth,
         skybox_pipeline,
         skybox_bind_group,
@@ -61,7 +63,19 @@ pub fn main_opaque_pass_3d(
     let diagnostics = ctx.diagnostic_recorder();
     let diagnostics = diagnostics.as_deref();
 
-    let color_attachments = [Some(target.get_color_attachment())];
+    let color_attachments: Vec<Option<RenderPassColorAttachment>> =
+        std::iter::once(Some(target.get_color_attachment()))
+            .chain(
+                multiple_targets
+                    .into_iter()
+                    .flat_map(|x| x.0.iter())
+                    .map(|x| Some(x.get_attachment())),
+            )
+            .collect();
+
+    // let color_attachments = [Some(target.get_color_attachment())];
+    // println!("{:?}", color_attachments);
+
     let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
     let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {

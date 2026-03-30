@@ -805,6 +805,33 @@ impl Default for CameraOutputMode {
     }
 }
 
+#[derive(Component, Debug, Clone)]
+pub struct MultipleRenderTargets(pub Vec<RenderTarget>);
+
+impl MultipleRenderTargets {
+    pub fn normalize(
+        &self,
+        primary_window: Option<Entity>,
+    ) -> Option<NormalizedMultipleRenderTargets> {
+        let normalized_targets: Vec<NormalizedRenderTarget> = self
+            .0
+            .iter()
+            .map(|x| x.normalize(primary_window))
+            .filter(|x| x.is_some())
+            .map(|x| x.unwrap())
+            .collect();
+
+        if normalized_targets.is_empty() {
+            return None;
+        }
+
+        Some(NormalizedMultipleRenderTargets(normalized_targets))
+    }
+}
+
+#[derive(Component, Debug, Clone)]
+pub struct NormalizedMultipleRenderTargets(pub Vec<NormalizedRenderTarget>);
+
 /// The "target" that a [`Camera`] will render to. For example, this could be a `Window`
 /// swapchain or an [`Image`].
 #[derive(Component, Debug, Clone, Reflect, From)]

@@ -24,7 +24,8 @@ use bevy_camera::{
     visibility::{self, RenderLayers, VisibleEntities},
     Camera, Camera2d, Camera3d, CameraMainTextureUsages, CameraOutputMode, CameraUpdateSystems,
     ClearColor, ClearColorConfig, Exposure, Hdr, ManualTextureViewHandle, MsaaWriteback,
-    NormalizedRenderTarget, Projection, RenderTarget, RenderTargetInfo, Viewport,
+    MultipleRenderTargets, NormalizedMultipleRenderTargets, NormalizedRenderTarget, Projection,
+    RenderTarget, RenderTargetInfo, Viewport,
 };
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
@@ -349,7 +350,12 @@ pub fn camera_system(
     windows: Query<(Entity, &Window)>,
     images: Res<Assets<Image>>,
     manual_texture_views: Res<ManualTextureViews>,
-    mut cameras: Query<(&mut Camera, &RenderTarget, &mut Projection)>,
+    mut cameras: Query<(
+        &mut Camera,
+        &RenderTarget,
+        &mut Projection,
+        Option<&MultipleRenderTargets>,
+    )>,
 ) -> Result<(), BevyError> {
     let primary_window = primary_window.iter().next();
 
@@ -370,7 +376,7 @@ pub fn camera_system(
         })
         .collect();
 
-    for (mut camera, render_target, mut camera_projection) in &mut cameras {
+    for (mut camera, render_target, mut camera_projection, mrts) in &mut cameras {
         let mut viewport_size = camera
             .viewport
             .as_ref()
@@ -441,6 +447,7 @@ pub fn camera_system(
 #[require(RenderVisibleEntities)]
 pub struct ExtractedCamera {
     pub target: Option<NormalizedRenderTarget>,
+    pub multiple_render_targets: Option<NormalizedMultipleRenderTargets>,
     pub physical_viewport_size: Option<UVec2>,
     pub physical_target_size: Option<UVec2>,
     pub viewport: Option<Viewport>,
@@ -466,6 +473,7 @@ pub fn extract_cameras(
             &GlobalTransform,
             &VisibleEntities,
             &Frustum,
+            Option<&MultipleRenderTargets>,
             (
                 Has<Hdr>,
                 Option<&ColorGrading>,
@@ -507,6 +515,7 @@ pub fn extract_cameras(
         transform,
         visible_entities,
         frustum,
+        multiple_render_targets,
         (
             hdr,
             color_grading,
@@ -579,9 +588,17 @@ pub fn extract_cameras(
             // removed from it.
 
             let mut commands = commands.entity(render_entity);
+            let mut normalized_multiple_render_targets: Option<NormalizedMultipleRenderTargets> =
+                None;
+            if let Some(multiple_render_targets) = multiple_render_targets {
+                normalized_multiple_render_targets =
+                    multiple_render_targets.normalize(primary_window);
+            }
+
             commands.insert((
                 ExtractedCamera {
                     target: render_target.normalize(primary_window),
+                    multiple_render_targets: normalized_multiple_render_targets,
                     viewport: camera.viewport.clone(),
                     physical_viewport_size: Some(viewport_size),
                     physical_target_size: Some(target_size),
